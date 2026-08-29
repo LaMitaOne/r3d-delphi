@@ -1,0 +1,10 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<BorlandProject>
+	<Transactions>
+    <Transaction>1899.12.30 00:00:00.000.746,C:\Users\Lenovo\Documents\Embarcadero\Studio\Projekte\Unit1.dfm=C:\Users\Lenovo\Downloads\raylib-TPS-prototype-main\Unit1.dfm</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.129,C:\Users\Lenovo\Documents\Embarcadero\Studio\Projekte\Project2.dproj=C:\Users\Lenovo\Downloads\raylib-TPS-prototype-main\raylibTPSprototypeVCL.dproj</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.746,C:\Users\Lenovo\Documents\Embarcadero\Studio\Projekte\Unit1.pas=C:\Users\Lenovo\Downloads\raylib-TPS-prototype-main\Unit1.pas</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.362,=C:\Users\Lenovo\Documents\Embarcadero\Studio\Projekte\Unit1.pas</Transaction>
+    <Transaction>2026.08.29 15:27:31.295,C:\Users\Lenovo\Downloads\raylib-TPS-prototype-main\raylibPrototypeVCL.dproj=C:\Users\Lenovo\Downloads\raylib-TPS-prototype-main\raylibTPSprototypeVCL.dproj</Transaction>
+  </Transactions>
+</BorlandProject>
