@@ -1,7 +1,7 @@
 unit r3ddelphi;
 {==============================================================================*
- *  r3d version 0.9 - Pascal header für Delphi / RAD Studio (läuft auch FPC)    *
- *  Zusammengeführt aus dem ray4laz-FPC-Header (2025-2026 Gunko Vadim @guvacode)*
+ *  r3d version 0.9 - Pascal header for Delphi / RAD Studio (lÃ¤uft auch FPC)    *
+ *  Combined from ray4laz-FPC-Header (2025-2026 Gunko Vadim @guvacode)          *
  *  Original C code r3d by Le Juez Victor:  https://github.com/Bigfoot71/r3d    *
  *                                                                              *
  *  This software is provided "as-is", without any express or implied warranty. *
@@ -472,9 +472,9 @@ type
     R3D_SHADOW_UPDATE_CONTINUOUS  ///< Shadow maps update every frame for real-time accuracy.
   );
 
-  // HINWEIS: TR3D_LightType war im Paste nicht enthalten (stand vermutlich über
+  // HINWEIS: TR3D_LightType war im Paste nicht enthalten (stand vermutlich Ã¼ber
   // dem hier kopierten Ausschnitt). Diese Definition entspricht dem C-Original.
-  // Falls der Typ an anderer Stelle der Unit schon existiert -> Duplikat löschen!
+  // Falls der Typ an anderer Stelle der Unit schon existiert -> Duplikat lÃ¶schen!
   TR3D_LightType = (R3D_LIGHT_DIR = 0, R3D_LIGHT_SPOT, R3D_LIGHT_OMNI);
 
   TR3D_Light = UInt32;
@@ -1269,7 +1269,7 @@ type
 function R3D_GetFrustum: TR3D_Frustum; cdecl; external R3D_DLLNAME name 'R3D_GetFrustum';
 function R3D_ComputeFrustum(viewProj: TMatrix): TR3D_Frustum; cdecl; external R3D_DLLNAME name 'R3D_ComputeFrustum';
 function R3D_ComputeFrustumBoundingBox(invViewProj: TMatrix): TBoundingBox; cdecl; external R3D_DLLNAME name 'R3D_ComputeFrustumBoundingBox';
-// ACHTUNG (Bugfix ggü. FPC-Version): kein "var array of" mehr (ABI), stattdessen
+// ACHTUNG (Bugfix ggÃ¼. FPC-Version): kein "var array of" mehr (ABI), stattdessen
 // Zeiger auf mind. 8 TVector3:  var pts: array[0..7] of TVector3;
 // R3D_ComputeFrustumCorners(mat, @pts[0]);
 procedure R3D_ComputeFrustumCorners(invViewProj: TMatrix; corners: PVector3); cdecl; external R3D_DLLNAME name 'R3D_ComputeFrustumCorners';
@@ -1384,7 +1384,7 @@ function R3D_IsOrientedBoxVisible(aabb: TBoundingBox; transform: TMatrix): Boole
 
 implementation
 
-// kleine lokale Helper (keine Abhängigkeit von ColorCreate/Vector2Create)
+// kleine lokale Helper (keine AbhÃ¤ngigkeit von ColorCreate/Vector2Create)
 function R3D_MakeColorB(R, G, B, A: Byte): TColorB;
 begin
   Result.r := R; Result.g := G; Result.b := B; Result.a := A;
@@ -1644,9 +1644,9 @@ begin
   else if SameText(Path, 'ssr.maxRaySteps') then Env^.ssr.maxRaySteps := Value
   else if SameText(Path, 'ssr.binarySteps') then Env^.ssr.binarySteps := Value
   else if SameText(Path, 'ssgi.sliceCount') then Env^.ssgi.sliceCount := Value
-  else if SameText(Path, 'sampleCount') then Env^.ssgi.sliceCount := Value       // Kompatibilität zur FPC-Version
+  else if SameText(Path, 'sampleCount') then Env^.ssgi.sliceCount := Value       // KompatibilitÃ¤t zur FPC-Version
   else if SameText(Path, 'ssgi.denoiseSteps') then Env^.ssgi.denoiseSteps := Value
-  else if SameText(Path, 'denoiseSteps') then Env^.ssgi.denoiseSteps := Value    // Kompatibilität zur FPC-Version
+  else if SameText(Path, 'denoiseSteps') then Env^.ssgi.denoiseSteps := Value    // KompatibilitÃ¤t zur FPC-Version
   else
     raise Exception.CreateFmt('Unknown Integer field or wrong type: %s', [Path]);
 end;
