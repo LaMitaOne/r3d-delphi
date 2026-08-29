@@ -1,4 +1,35 @@
-﻿unit ModelEngine;
+unit ModelEngine;
+
+{==============================================================================*
+ *  ModelEngine - actor layer combining r3d rendering with Kraft physics        *
+ *                                                                              *
+ *  Core idea: every visible/gameplay object is a TModelActor that owns         *
+ *    - a Kraft rigid body + shape (physics), and                              *
+ *    - an optional r3d model (rendering).                                     *
+ *                                                                              *
+ *  TModelEngine owns the actor list and the physics world. Each frame:         *
+ *    Update(DeltaTime) -> step physics, then let every living actor sync       *
+ *    its transform from its body and run its own logic.                        *
+ *    Render()          -> draws all visible, alive actors (call this between   *
+ *                         R3D_Begin and R3D_End).                              *
+ *                                                                              *
+ *  Kraft's low-level contact callbacks are translated here into per-actor      *
+ *  events (OnCollision / OnCollisionEnter / OnCollisionExit), and each         *
+ *  actor's UserData points back at itself, so physics rays and contacts        *
+ *  can always be traced back to the owning actor.                              *
+ *                                                                              *
+ *  Class hierarchy:                                                            *
+ *    TModelActor            physics body + optional static model               *
+ *      TStaticModelActor    convenience: krbtSTATIC                            *
+ *      TDynamicModelActor   convenience: krbtDYNAMIC                           *
+ *        TAnimatedModelActor  plays skeletal animations (r3d player)           *
+ *          TActionActor     character base with update hooks; the game         *
+ *                           derives TPlayerActor / TZombieActor from it        *
+ *      TSimpleActionActor   directly velocity-controlled mover (boxes, balls)  *
+ *                                                                              *
+ *  NOTE: for mesh collision shapes (kstMesh) the model must be loaded with     *
+ *  R3D_IMPORT_RETAIN_MESH_DATA - this unit does that automatically.            *
+ *==============================================================================}
 
 {$POINTERMATH ON}
 
@@ -6,15 +37,15 @@ interface
 
 uses
   Raylib, rlgl, Classes, SysUtils, Contnrs, Kraft, KraftConvert, RayMath, Math,
-  r3ddelphi;
+  r3ddelphi;   // rename to 'r3d' if you use the released single-unit binding
 
 type
   TModelActor = class;
 
-  // Тип события столкновения
+  // Collision event: fires continuously while two actors touch
   TCollisionEvent = procedure(Sender: TModelActor; Other: TModelActor; const ContactPoint: TVector3; const Normal: TVector3) of object;
 
-  // Тип события начала/конца столкновения
+  // Collision begin/end events: fire exactly once per contact pair
   TCollisionStateEvent = procedure(Sender: TModelActor; Other: TModelActor) of object;
 
   { TModelEngine }
@@ -24,7 +55,7 @@ type
     FPhysics: TKraft;
     function GetCount: integer;
     function GetModelActor(const Index: integer): TModelActor;
-    // Внутренние обработчики коллизий Kraft
+    // Internal Kraft contact callbacks, mapped to per-actor events
     procedure OnContactBegin(const ContactPair: PKraftContactPair);
     procedure OnContactEnd(const ContactPair: PKraftContactPair);
     procedure OnContactStay(const ContactPair: PKraftContactPair);
@@ -44,15 +75,15 @@ type
   { TModelActor }
   TModelActor = class
   protected
-    // Защищенные поля - доступны наследникам
+    // Protected fields - accessible to descendants
     FBody: TKraftRigidBody;
     FShape: TKraftShape;
     FMeshShape: TKraftShapeMesh;
     FModel: TR3D_Model;
     FModelLoaded: boolean;
     FEngine: TModelEngine;
-    FCapsuleRadius: Single;// := ASize.x;
-    FCapsuleHeight: Single;// := ASize.y;
+    FCapsuleRadius: Single;
+    FCapsuleHeight: Single;
   private
     FCamLayer: TR3D_Layer;
     FIsDead: boolean;
@@ -67,13 +98,13 @@ type
     FTint: TColor;
     FMass: single;
     FDensity: single;
-    // События столкновений
+    // Collision events
     FOnCollision: TCollisionEvent;
     FOnCollisionEnter: TCollisionStateEvent;
     FOnCollisionExit: TCollisionStateEvent;
-    // Список объектов с которыми есть контакт
+    // Actors we currently touch
     FContacts: TList;
-    // Вспомогательные методы
+    // Helpers
     function GetFriction: single;
     function GetRestitution: single;
     procedure SetEngine(AValue: TModelEngine);
@@ -87,7 +118,7 @@ type
     procedure UnloadR3DModel;
     procedure UpdateModelTransform;
 
-    // Внутренние методы для обработки коллизий
+    // Internal collision bookkeeping
     procedure InternalAddContact(Other: TModelActor);
     procedure InternalRemoveContact(Other: TModelActor);
     procedure InternalProcessContact(Other: TModelActor; const ContactPoint: TVector3; const Normal: TVector3);
@@ -120,9 +151,9 @@ type
     function GetQuaternion: TQuaternion;
     function GetMass: single;
     function GetDensity: single;
-    // Проверка столкновения с другим актором
+    // Test whether this actor currently touches another one
     function IsCollidingWith(Other: TModelActor): boolean;
-    // Свойства
+    // Properties
     property Engine: TModelEngine read FEngine write SetEngine;
     property Position: TVector3 read FPosition write SetPosition;
     property Rotation: TVector3 read GetRotation write SetRotation;
@@ -140,18 +171,19 @@ type
     property Restitution: single read GetRestitution write SetRestitution;
     property Friction: single read GetFriction write SetFriction;
     property ModelOffset: TVector3 read FModelOffset write SetModelOffset;
-    property CapsuleRadius: Single read FCapsuleRadius;//:= ASize.x;
-    property CapsuleHeight: Single Read FCapsuleHeight;//:= ASize.y;
-    // Свойства для доступа к физике из наследников
+    property CapsuleRadius: Single read FCapsuleRadius;
+    property CapsuleHeight: Single read FCapsuleHeight;
+    // Physics access for descendants
     property Body: TKraftRigidBody read FBody;
     property Shape: TKraftShape read FShape;
-    // События столкновений
+    // Collision events
     property OnCollision: TCollisionEvent read FOnCollision write FOnCollision;
     property OnCollisionEnter: TCollisionStateEvent read FOnCollisionEnter write FOnCollisionEnter;
     property OnCollisionExit: TCollisionStateEvent read FOnCollisionExit write FOnCollisionExit;
     property CamLayer: TR3D_Layer read FCamLayer write FCamLayer;
   end;
 
+  { Convenience constructors that fix the rigid body type }
   TStaticModelActor = class(TModelActor)
   public
     constructor Create(AModelPath: string; AParent: TModelEngine; AShapeType: TKraftShapeType;
@@ -164,7 +196,7 @@ type
       ASize: TVector3);
   end;
 
-  { TAnimatedModelActor - актор с поддержкой простых анимаций }
+  { TAnimatedModelActor - actor with skeletal animation support }
   TAnimatedModelActor = class(TDynamicModelActor)
   private
     FAnimationLib: TR3D_AnimationLib;
@@ -188,7 +220,7 @@ type
     procedure Update(DeltaTime: single); override;
     procedure Draw; override;
 
-    // Управление анимациями
+    // Animation control
     procedure PlayAnimation(const AName: string; ALoop: boolean = True; ASpeed: single = 1.0);
     procedure PlayAnimationByIndex(AIndex: integer; ALoop: boolean = True; ASpeed: single = 1.0);
     procedure PlayDefaultAnimation;
@@ -211,7 +243,7 @@ type
     property Paused: boolean read FPaused;
   end;
 
-  { TSimpleActionActor - простой движущийся объект (коробка, мяч и т.д.) }
+  { TSimpleActionActor - simple velocity-controlled mover (box, ball, ...) }
   TSimpleActionActor = class(TDynamicModelActor)
   protected
     FOnGround: boolean;
@@ -248,7 +280,15 @@ type
     property GroundNormal: TVector3 read FGroundNormal;
   end;
 
-  { TActionActor - базовый класс для игровых персонажей }
+  { TActionActor - base class for game characters (player, NPCs, enemies).
+    Provides the update skeleton and template methods that descendants
+    override to inject their own logic:
+      DoBeforeUpdate  - input/AI, runs before physics sync
+      GetMoveDirection - desired movement direction (world space)
+      IsJumpKeyPressed - jump intent
+      DoAfterUpdate   - animation, post-physics work
+    Movement itself is force-based: a spring accelerates the body towards
+    the target speed, which keeps it stable against collisions. }
   TActionActor = class(TAnimatedModelActor)
   protected
     FOnGround: boolean;
@@ -262,7 +302,7 @@ type
     FJumpForce: single;
     FGravityScale: single;
 
-    // Виртуальные методы для переопределения в наследниках
+    // Virtual template methods, overridden by descendants
     procedure DoBeforeUpdate(DeltaTime: single); virtual;
     procedure DoAfterUpdate(DeltaTime: single); virtual;
     procedure DoOnGroundChanged(NewOnGround: boolean); virtual;
@@ -323,16 +363,17 @@ var
 begin
   if not Assigned(ContactPair) then Exit;
 
+  // Shapes carry the owning actor in UserData
   ActorA := TModelActor(ContactPair^.Shapes[0].UserData);
   ActorB := TModelActor(ContactPair^.Shapes[1].UserData);
 
   if not (Assigned(ActorA) and Assigned(ActorB)) then Exit;
 
-  // Добавляем контакты друг другу
+  // Register the contact on both sides (used by IsCollidingWith)
   ActorA.InternalAddContact(ActorB);
   ActorB.InternalAddContact(ActorA);
 
-  // Получаем нормаль и точку контакта
+  // Contact normal and point, transformed to world space
   WorldNormal := Vector3TermMatrixMulBasis(ContactPair^.Manifold.LocalNormal,
     ActorA.Body.WorldTransform);
   Normal := KraftVector3ToRaylibVector3(WorldNormal);
@@ -346,13 +387,14 @@ begin
     ContactPoint := ActorB.GetPosition;
   end;
 
-  // Вызываем событие входа в столкновение
+  // Fire the enter event exactly once per contact pair
   if Assigned(ActorA.FOnCollisionEnter) then
     ActorA.FOnCollisionEnter(ActorA, ActorB);
   if Assigned(ActorB.FOnCollisionEnter) then
     ActorB.FOnCollisionEnter(ActorB, ActorA);
 
-  // Вызываем событие столкновения
+  // Fire the continuous collision event. The manifold normal is defined
+  // from A's point of view, so B receives it negated.
   if Assigned(ActorA.FOnCollision) then
     ActorA.FOnCollision(ActorA, ActorB, ContactPoint, Normal);
   if Assigned(ActorB.FOnCollision) then
@@ -370,11 +412,11 @@ begin
 
   if not (Assigned(ActorA) and Assigned(ActorB)) then Exit;
 
-  // Удаляем контакты
+  // Unregister the contact on both sides
   ActorA.InternalRemoveContact(ActorB);
   ActorB.InternalRemoveContact(ActorA);
 
-  // Вызываем событие выхода из столкновения
+  // Fire the exit event exactly once per contact pair
   if Assigned(ActorA.FOnCollisionExit) then
     ActorA.FOnCollisionExit(ActorA, ActorB);
   if Assigned(ActorB.FOnCollisionExit) then
@@ -394,7 +436,7 @@ begin
 
   if not (Assigned(ActorA) and Assigned(ActorB)) then Exit;
 
-  // Получаем нормаль и точку контакта
+  // Contact normal and point, transformed to world space
   WorldNormal := Vector3TermMatrixMulBasis(ContactPair^.Manifold.LocalNormal,
     ActorA.Body.WorldTransform);
   Normal := KraftVector3ToRaylibVector3(WorldNormal);
@@ -408,7 +450,7 @@ begin
     ContactPoint := ActorB.GetPosition;
   end;
 
-  // Вызываем событие столкновения
+  // Fire the continuous collision event while the pair stays in contact
   if Assigned(ActorA.FOnCollision) then
     ActorA.FOnCollision(ActorA, ActorB, ContactPoint, Normal);
   if Assigned(ActorB.FOnCollision) then
@@ -419,16 +461,20 @@ constructor TModelEngine.Create;
 begin
   FActorList := TObjectList.Create(True);
   FPhysics := TKraft.Create(-1);
+
+  // Solver tuning: 60 Hz steps, iteration counts chosen for a good
+  // stability/performance balance for character-driven games
   FPhysics.SetFrequency(60);
   FPhysics.VelocityIterations := 8;
   FPhysics.PositionIterations := 3;
   FPhysics.SpeculativeIterations := 8;
   FPhysics.TimeOfImpactIterations := 0;
-  FPhysics.Gravity.y := -9.81;  // ← Это должно быть здесь!
+  FPhysics.Gravity.y := -9.81;   // Earth gravity
   FPhysics.LinearSlop := 0.02;
   FPhysics.PenetrationSlop := 0.02;
   FPhysics.ContactBaumgarte := 0.5;
 
+  // Hook the per-actor event mapping into Kraft's contact manager
   FPhysics.ContactManager.OnContactBegin := OnContactBegin;
   FPhysics.ContactManager.OnContactEnd := OnContactEnd;
   FPhysics.ContactManager.OnContactStay := OnContactStay;
@@ -436,7 +482,7 @@ end;
 
 destructor TModelEngine.Destroy;
 begin
-  Clear;
+  Clear;            // frees all actors ( TObjectList owns them)
   FPhysics.Free;
   FActorList.Free;
   inherited Destroy;
@@ -460,7 +506,11 @@ var
   i: integer;
   Actor: TModelActor;
 begin
+  // 1) Step the physics world
   FPhysics.Step(DeltaTime);
+
+  // 2) Let every living actor sync its transform from its body
+  //    and run its own logic (AI, animation, input, ...)
   for i := 0 to FActorList.Count - 1 do
   begin
     Actor := TModelActor(FActorList.Items[i]);
@@ -476,6 +526,7 @@ var
   i: integer;
   Actor: TModelActor;
 begin
+  // Draw all visible, alive actors. Call between R3D_Begin and R3D_End.
   for i := 0 to FActorList.Count - 1 do
   begin
     Actor := TModelActor(FActorList.Items[i]);
@@ -524,16 +575,13 @@ begin
 end;
 
 function TModelActor.GetTransformMatrix: PMatrix;
-var
-  res: TMatrix;
 begin
+  // NOTE: must never return a pointer to a local temporary, so the
+  // no-body case returns nil instead of a dangling stack pointer.
   if Assigned(FBody) then
     Result := @FBody.WorldTransform
   else
-  begin
-    res := MatrixIdentity;
-    Result := @res;
-  end;
+    Result := nil;
 end;
 
 procedure TModelActor.SetFriction(AValue: single);
@@ -550,6 +598,7 @@ procedure TModelActor.UpdateRotationFromPhysics;
 begin
   if Assigned(FBody) then
   begin
+    // Extract the orientation from the body's world transform
     FQuaternion := KraftMatrix4x4ToQuaternion(FBody.WorldTransform);
     FRotation := QuaternionToEuler(FQuaternion);
     FRotation := Vector3Scale(FRotation, RAD2DEG);
@@ -564,6 +613,8 @@ var
 begin
   if Assigned(FBody) then
   begin
+    // Push our quaternion and position back into the body's transform
+    // (Kraft stores the translation in row 3 of its 4x4 matrix)
     RotationMatrix := QuaternionToMatrix(FQuaternion);
     KraftMatrix := RaylibMatrixToKraftMatrix(RotationMatrix);
     KraftPos := Vec3ToKraft(FPosition);
@@ -578,6 +629,7 @@ procedure TModelActor.UpdateMassProperties;
 begin
   if Assigned(FBody) and Assigned(FShape) then
   begin
+    // Re-apply density, then let Kraft recompute mass/inertia
     FShape.Density := FDensity;
     FBody.Finish;
   end;
@@ -589,6 +641,9 @@ var
   Quat: TQuaternion;
   RotMat: TMatrix;
 begin
+  // Compose: scale * translate(model position incl. offset) * rotate.
+  // The offset is rotated with the body, so it stays attached to the
+  // model's local frame (used to align meshes to their collider).
   ModelPos := GetPosition;
   Quat := GetQuaternion;
   RotMat := QuaternionToMatrix(Quat);
@@ -603,7 +658,7 @@ begin
   FModelTransform := MatrixMultiply(MatrixScale(FScale.x, FScale.y, FScale.z), FModelTransform);
 end;
 
-procedure TModelActor.LoadR3DModel(const APath: string; CreateCollider: boolean = False);
+procedure TModelActor.LoadR3DModel(const APath: string; CreateCollider: boolean);
 begin
   if FModelLoaded then
     UnloadR3DModel;
@@ -611,9 +666,11 @@ begin
   if FileExists(APath) then
   begin
     if CreateCollider then
-      FModel := R3D_LoadModelEx(PAnsiChar(APath), R3D_IMPORT_RETAIN_MESH_DATA)
+      // RETAIN_MESH_DATA keeps a CPU-side copy of the vertices - required
+      // later by CreateMeshShape to build the Kraft triangle collider
+      FModel := R3D_LoadModelEx(PAnsiChar(AnsiString(APath)), R3D_IMPORT_RETAIN_MESH_DATA)
     else
-      FModel := R3D_LoadModel(PAnsiChar(APath));
+      FModel := R3D_LoadModel(PAnsiChar(AnsiString(APath)));
 
     FModelLoaded := FModel.meshCount > 0;
 
@@ -621,6 +678,8 @@ begin
   end
   else
   begin
+    // Missing file: continue with an empty (zeroed) model rather than
+    // crashing - descendants decide how to handle "no mesh"
     FModelLoaded := False;
     FillChar(FModel, SizeOf(TR3D_Model), 0);
   end;
@@ -650,6 +709,8 @@ begin
 
   mesh := TKraftMesh.Create(FEngine.Physics);
 
+  // Build a triangle collider from the retained CPU mesh data.
+  // Requires the model to have been loaded with R3D_IMPORT_RETAIN_MESH_DATA.
   for i := 0 to FModel.meshCount - 1 do
   begin
     r3dMeshData := @FModel.meshData[i];
@@ -662,6 +723,7 @@ begin
 
     if (r3dMeshData^.indexCount > 0) and Assigned(indices) then
     begin
+      // Indexed mesh: three indices per triangle
       for j := 0 to (r3dMeshData^.indexCount div 3) - 1 do
       begin
         v1 := Vector3Create(
@@ -680,6 +742,7 @@ begin
           verts[indices[j * 3 + 2]].position.z
         );
 
+        // Normals are stored as SNORM8 (-127..127): scale back to [-1..1]
         n1 := Vector3Create(
           verts[indices[j * 3 + 0]].normal[0] / 127.0,
           verts[indices[j * 3 + 0]].normal[1] / 127.0,
@@ -712,6 +775,7 @@ begin
     end
     else
     begin
+      // No index buffer: vertices are raw triangle soup
       for j := 0 to (r3dMeshData^.vertexCount div 3) - 1 do
       begin
         v1 := Vector3Create(
@@ -762,6 +826,7 @@ begin
     end;
   end;
 
+  // Scale the collider to the actor's size, then finalize
   mesh.Scale(Vec3ToKraft(ASize));
   mesh.DoubleSided := True;
   mesh.Finish;
@@ -812,7 +877,8 @@ begin
     FBody.SetRigidBodyType(ARigidBodyType);
     FKrSize := Vec3ToKraft(ASize);
 
-    // Устанавливаем UserData для идентификации в коллизиях
+    // UserData lets collision callbacks and physics rays find the
+    // owning actor (used by occlusion checks, zombie vision, ...)
     FBody.UserData := Self;
 
     case AShapeType of
@@ -825,12 +891,14 @@ begin
         FShape := TKraftShapeCapsule.Create(FEngine.Physics, FBody, ASize.x, ASize.y);
       kstPlane:
       begin
+        // Infinite static ground-style plane, normal pointing up
         PlaneNormal := Vec3ToKraft(Vector3Create(0.0, 1.0, 0.0));
         FShape := TKraftShapePlane.Create(FEngine.Physics, FBody, Plane(PlaneNormal, 0.0));
         FBody.SetRigidBodyType(krbtStatic);
       end;
       kstMesh:
       begin
+        // Triangle-mesh colliders are expensive - force static body
         FBody.SetRigidBodyType(krbtStatic);
         CreateMeshShape(ASize);
       end;
@@ -838,7 +906,7 @@ begin
         FShape := TKraftShapeBox.Create(FEngine.Physics, FBody, FKrSize);
     end;
 
-    // Устанавливаем UserData для формы
+    // Set UserData on the shape as well (contact pairs reference shapes)
     FShape.UserData := Self;
 
     if AShapeType <> kstMesh then
@@ -857,7 +925,7 @@ begin
   if Assigned(FEngine) then
     FEngine.Add(Self);
 end;
-{
+
 destructor TModelActor.Destroy;
 begin
   if Assigned(FEngine) then
@@ -865,27 +933,11 @@ begin
 
   UnloadR3DModel;
 
-  if Assigned(FMeshShape) then
-    FMeshShape.Free;
- // else if Assigned(FShape) then
-   // FShape.Free;
-  if Assigned(FBody) then
-    FBody.Free;
-//  FContacts.Free;
-  inherited Destroy;
-end;
-}
-destructor TModelActor.Destroy;
-begin
-  if Assigned(FEngine) then
-    FEngine.Remove(Self);
-
-  UnloadR3DModel;
-
+  // Mesh actors: FShape and FMeshShape are the same object, free it once
   if Assigned(FMeshShape) then
     FMeshShape.Free;
 
-  // Освобождаем FShape (если это не FMeshShape)
+  // Otherwise free the regular shape
   if Assigned(FShape) and (FShape <> FMeshShape) then
     FShape.Free;
 
@@ -902,6 +954,7 @@ procedure TModelActor.Update(DeltaTime: single);
 begin
   if Assigned(FBody) then
   begin
+    // Pull the authoritative transform from the physics body
     FPosition := GetPosition;
     UpdateRotationFromPhysics;
     UpdateModelTransform;
@@ -916,6 +969,7 @@ end;
 
 procedure TModelActor.Dead;
 begin
+  // Marked only - the engine skips update/draw for dead actors
   FIsDead := True;
 end;
 
@@ -924,6 +978,7 @@ begin
   FPosition := APosition;
   if Assigned(FBody) then
   begin
+    // Teleport the body; the actor follows on the next Update
     FBody.SetWorldPosition(Vec3ToKraft(APosition));
   end;
   UpdateModelTransform;
@@ -961,6 +1016,7 @@ begin
     FMass := AMass;
     if Assigned(FShape) then
     begin
+      // Derive a density that produces the requested mass for this volume
       FDensity := FMass / (FScale.x * FScale.y * FScale.z);
       UpdateMassProperties;
     end;
@@ -988,6 +1044,7 @@ procedure TModelActor.ApplyForce(AForce: TVector3);
 begin
   if Assigned(FBody) then
   begin
+    // kfmForce: continuous force, accumulated and applied during the step
     FBody.SetWorldForce(Vec3ToKraft(AForce), kfmForce);
   end;
 end;
@@ -996,6 +1053,7 @@ procedure TModelActor.ApplyImpulse(AImpulse: TVector3);
 begin
   if Assigned(FBody) then
   begin
+    // kfmImpulse: instant velocity change (mass-independent force spike)
     FBody.SetWorldForce(Vec3ToKraft(AImpulse), kfmImpulse);
   end;
 end;
@@ -1052,6 +1110,7 @@ var
 begin
   if Assigned(FBody) then
   begin
+    // Kraft stores the translation in row 3 of its row-major 4x4
     Transform := FBody.WorldTransform;
     Result := Vector3Create(Transform[3, 0], Transform[3, 1], Transform[3, 2]);
   end
@@ -1100,7 +1159,7 @@ end;
 
 procedure TModelActor.InternalProcessContact(Other: TModelActor; const ContactPoint: TVector3; const Normal: TVector3);
 begin
-  // Этот метод вызывается при каждом кадре столкновения
+  // Called on every contact frame
   if Assigned(FOnCollision) then
     FOnCollision(Self, Other, ContactPoint, Normal);
 end;
@@ -1124,7 +1183,7 @@ end;
 { TAnimatedModelActor }
 
 constructor TAnimatedModelActor.Create(AModelPath: string; AParent: TModelEngine; ASize: TVector3;
-  AShapeType: TKraftShapeType = kstCapsule);
+  AShapeType: TKraftShapeType);
 begin
   inherited Create(AModelPath, AParent, AShapeType, ASize);
 
@@ -1155,18 +1214,20 @@ begin
 
   if FileExists(APath) then
   begin
-    FAnimationLib := R3D_LoadAnimationLib(PAnsiChar(APath));
+    // Load the animation library and bind a player to the model's
+    // skeleton (the model must already be loaded with a skeleton)
+    FAnimationLib := R3D_LoadAnimationLib(PAnsiChar(AnsiString(APath)));
     if FAnimationLib.count > 0 then
     begin
       FAnimationPlayer := R3D_LoadAnimationPlayer(FModel.skeleton, FAnimationLib);
       FAnimationsLoaded := True;
 
-      // Если есть анимации, устанавливаем первую как текущую
+      // If animations exist, make the first one current and start it
+      // looping as the default
       if FAnimationLib.count > 0 then
       begin
         FAnimIndex := 0;
         FCurrentAnimation := string(FAnimationLib.animations[0].name);
-        // Включаем анимацию по умолчанию
         R3D_SetAnimationLoop(@FAnimationPlayer, 0, True);
         R3D_PlayAnimation(@FAnimationPlayer, 0);
       end;
@@ -1198,6 +1259,7 @@ procedure TAnimatedModelActor.DrawAnimated;
 begin
   if not FVisible or FIsDead or not FModelLoaded then Exit;
 
+  // Animated draw while a player is bound, plain draw otherwise
   if FAnimationsLoaded then
     R3D_DrawAnimatedModelPro(FModel, FAnimationPlayer, FModelTransform)
   else
@@ -1215,7 +1277,7 @@ begin
   DrawAnimated;
 end;
 
-procedure TAnimatedModelActor.PlayAnimation(const AName: string; ALoop: boolean = True; ASpeed: single = 1.0);
+procedure TAnimatedModelActor.PlayAnimation(const AName: string; ALoop: boolean; ASpeed: single);
 var
   i: integer;
 begin
@@ -1238,7 +1300,7 @@ begin
   end;
 end;
 
-procedure TAnimatedModelActor.PlayAnimationByIndex(AIndex: integer; ALoop: boolean = True; ASpeed: single = 1.0);
+procedure TAnimatedModelActor.PlayAnimationByIndex(AIndex: integer; ALoop: boolean; ASpeed: single);
 begin
   if not FAnimationsLoaded or (AIndex < 0) or (AIndex >= FAnimationLib.count) then Exit;
 
@@ -1329,7 +1391,7 @@ end;
 { TSimpleActionActor }
 
 constructor TSimpleActionActor.Create(AModelPath: string; AParent: TModelEngine; ASize: TVector3;
-  AWalkSpeed: single = 2.0; AJumpForce: single = 4.0);
+  AWalkSpeed: single; AJumpForce: single);
 begin
   inherited Create(AModelPath, AParent, kstBox, ASize);
 
@@ -1354,6 +1416,7 @@ begin
 
   if Assigned(Body) then
   begin
+    // Lock pitch/roll: this actor only yaws
     Body.Flags := Body.Flags + [krbfLockRotationAxisX, krbfLockRotationAxisZ];
     Body.LinearVelocityDamp := 0.5;
     Body.AngularVelocityDamp := 0.5;
@@ -1376,7 +1439,7 @@ var
 begin
   inherited Update(DeltaTime);
 
-  // Поворот в направлении движения
+  // Turn towards the movement direction
   if Vector3Length(FMoveDirection) > 0 then
   begin
     MoveDir := Vector3Normalize(FMoveDirection);
@@ -1385,6 +1448,7 @@ begin
 
   if FTargetYaw <> FCurrentYaw then
   begin
+    // Shortest-arc angle difference, then smooth approach
     AngleDiff := FTargetYaw - FCurrentYaw;
     while AngleDiff > PI do AngleDiff := AngleDiff - 2 * PI;
     while AngleDiff < -PI do AngleDiff := AngleDiff + 2 * PI;
@@ -1397,7 +1461,7 @@ begin
     SetRotation(Quat);
   end;
 
-  // Движение
+  // Movement: horizontal velocity is set directly (kinematic-style)
   MoveDir := FMoveDirection;
   if Vector3Length(MoveDir) > 0 then
     MoveDir := Vector3Normalize(MoveDir);
@@ -1411,7 +1475,7 @@ begin
 
   Body.LinearVelocity := Vel;
 
-  // Прыжок
+  // Jump
   if FIsJumping and FOnGround then
     Jump;
 end;
@@ -1470,7 +1534,7 @@ end;
 { TActionActor }
 
 constructor TActionActor.Create(AModelPath: string; AParent: TModelEngine; ASize: TVector3;
-  AWalkSpeed: single = 2.0; AJumpForce: single = 4.0);
+  AWalkSpeed: single; AJumpForce: single);
 begin
   inherited Create(AModelPath, AParent, ASize, kstCapsule);
 
@@ -1489,23 +1553,21 @@ begin
 
   if Assigned(Shape) then
   begin
-    Shape.Friction := 0.8;       // Увеличиваем трение
+    Shape.Friction := 0.8;       // higher friction so characters grip the floor
     Shape.Restitution := 0.1;
     Shape.Density := 10.0;
   end;
 
   if Assigned(Body) then
   begin
+    Body.LinearVelocityDamp := 0.5;   // almost no linear damping
+    Body.GravityScale := 1.0;         // full gravity
 
-    Body.LinearVelocityDamp := 0.5;  // Почти нет демпфирования
-    Body.GravityScale := 1.0;        // Полная гравитация
-
-    // Не блокируем вращение
-
-     Body.AngularVelocityDamp := 10.0;
-     // Убеждаемся, что гравитация работает
-     Body.GravityScale := 1.0;
-     SetRotation(QuaternionIdentity);
+    // Rotation is not locked here: the yaw is applied manually each
+    // frame, and a strong angular damping keeps the body from spinning
+    Body.AngularVelocityDamp := 10.0;
+    Body.GravityScale := 1.0;
+    SetRotation(QuaternionIdentity);
   end;
 end;
 
@@ -1513,7 +1575,6 @@ destructor TActionActor.Destroy;
 begin
   inherited Destroy;
 end;
-
 
 procedure TActionActor.Update(DeltaTime: single);
 var
@@ -1526,13 +1587,16 @@ var
   CurrentSpeed: single;
   TargetSpeed: single;
 begin
+  // Hook for input/AI - runs before everything else
   DoBeforeUpdate(DeltaTime);
 
+  // Base update: sync transform from the physics body
   inherited Update(DeltaTime);
 
-  // Обновление поворота в направлении движения
+  // Smoothly rotate towards the target yaw
   if FTargetYaw <> FCurrentYaw then
   begin
+    // Shortest-arc angle difference, then smooth approach
     AngleDiff := FTargetYaw - FCurrentYaw;
     while AngleDiff > PI do AngleDiff := AngleDiff - 2 * PI;
     while AngleDiff < -PI do AngleDiff := AngleDiff + 2 * PI;
@@ -1545,7 +1609,9 @@ begin
     SetRotation(Quat);
   end;
 
-  // Движение
+  // Movement: force-based instead of directly setting velocity - this
+  // keeps collision response intact while accelerating towards the
+  // target speed
   MoveDir := GetMoveDirection(DeltaTime);
   FMoveDirection := MoveDir;
 
@@ -1567,7 +1633,7 @@ begin
     end
     else
     begin
-      // Быстрая остановка
+      // Quick stop: counter-force while moving, hard zero below threshold
       if CurrentSpeed > 0.05 then
       begin
         Force := Vector3Scale(Vector3Create(-Vel.x, 0, -Vel.z), 3.0);
@@ -1584,26 +1650,27 @@ begin
 
   FLastPosition := GetPosition;
 
-  // Прыжок - теперь использует ApplyImpulse
+  // Jump - uses an impulse instead of directly setting the velocity
   if IsJumpKeyPressed then
     Jump;
 
+  // Hook for animation and post-physics work
   DoAfterUpdate(DeltaTime);
 end;
 
 procedure TActionActor.DoBeforeUpdate(DeltaTime: single);
 begin
-  // Пустая реализация, переопределяется в наследниках
+  // Empty by default; override in descendants
 end;
 
 procedure TActionActor.DoAfterUpdate(DeltaTime: single);
 begin
-  // Пустая реализация, переопределяется в наследниках
+  // Empty by default; override in descendants
 end;
 
 procedure TActionActor.DoOnGroundChanged(NewOnGround: boolean);
 begin
-  // Пустая реализация, переопределяется в наследниках
+  // Empty by default; override in descendants
 end;
 
 function TActionActor.GetMoveDirection(DeltaTime: single): TVector3;
@@ -1617,11 +1684,10 @@ begin
 end;
 
 procedure TActionActor.Jump;
-
 begin
   if FOnGround and not FIsJumping then
   begin
-    // Используем импульс вместо прямого управления скоростью
+    // Impulse-based jump: works with the solver instead of against it
     ApplyImpulse(Vector3Create(0, FJumpForce, 0));
     FIsJumping := True;
     FOnGround := False;
@@ -1644,6 +1710,7 @@ function TActionActor.GetForwardDirection: TVector3;
 var
   Quat: TQuaternion;
 begin
+  // Forward on the XZ plane, derived from the current yaw
   Quat := QuaternionFromEuler(0, FCurrentYaw, 0);
   Result := Vector3RotateByQuaternion(Vector3Create(0, 0, 1), Quat);
   Result.y := 0;
