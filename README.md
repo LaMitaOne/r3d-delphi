@@ -16,7 +16,8 @@ This is a very early, experimental Delphi port (Win64) of the R3D 3D-Engine wrap
 This project stands on the shoulders of these awesome open-source projects:
 1. **R3D Wrapper:** Ported and fixed from the original FreePascal/Lazarus project [ray4laz_r3d by GuvaCode](https://github.com).
 2. **Kraft Physics Engine:** Created by Benjamin Rosseaux (used heavily in the [Castle Game Engine](https://castle-engine.io)).
-
+3. **Model Engine:*** from https://github.com/GuvaCode/raylib-TPS-prototype    
+     
 ## 🚀 How to test the Demo
 1. Clone this repository.
 2. Open raylibPrototypeVCL in your Delphi IDE.
