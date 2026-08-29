@@ -1,6 +1,6 @@
 unit r3ddelphi;
 {==============================================================================*
- *  r3d version 0.9 - Pascal header for Delphi / RAD Studio                     *
+ *  r3d version 0.1 - Pascal header for Delphi / RAD Studio                     *
  *  Combined from ray4laz-FPC-Header (2025-2026 Gunko Vadim @guvacode)          *
  *  Original C code r3d by Le Juez Victor:  https://github.com/Bigfoot71/r3d    *
  *                                                                              *
