@@ -472,9 +472,6 @@ type
     R3D_SHADOW_UPDATE_CONTINUOUS  ///< Shadow maps update every frame for real-time accuracy.
   );
 
-  // NOTE: TR3D_LightType was missing in the original paste (probably located above 
-  // the copied snippet). This definition matches the original C code.
-  // If this type already exists elsewhere in the unit -> delete the duplicate!
   TR3D_LightType = (R3D_LIGHT_DIR = 0, R3D_LIGHT_SPOT, R3D_LIGHT_OMNI);
 
   TR3D_Light = UInt32;
@@ -1566,8 +1563,6 @@ begin
   Result.color.contrast := 1.0;
   Result.color.saturation := 1.0;
 end;
-
-// Note: Delphi does not support "case <string> of" -> if/else chains with SameText
 
 procedure R3D_ENVIRONMENT_SET(const Path: string; Value: Single);
 var
