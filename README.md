@@ -23,3 +23,9 @@ This project stands on the shoulders of these awesome open-source projects:
 2. Open raylibPrototypeVCL in your Delphi IDE.
 3. Compile and run as **Win64**.
 4. Use your Arrow Keys to move the marble.
+
+
+🌍 better sample you can find now here: https://github.com/LaMitaOne/RaylibErosionStandaloneDelphi    
+<img width="870" height="614" alt="Unbenannt" src="https://github.com/user-attachments/assets/8e150fa0-70fa-4eb1-b342-6cf469741092" />
+
+
