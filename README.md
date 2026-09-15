@@ -1,11 +1,11 @@
 # r3d-delphi
-This is a very early, experimental Delphi port (Win64) of the R3D 3D-Engine wrapper for Raylib and the Kraft Physics Engine. 
+This is Delphi port (Win64) of the R3D 3D-Engine wrapper for Raylib and the Kraft Physics Engine. 
       
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/LaMitaOne/r3d-delphi)
         
 <img width="627" height="471" alt="Unbenannt" src="https://github.com/user-attachments/assets/208a58c2-a3cc-4b49-bcf7-bb7b438dbab6" />
      
-⚠️ **DISCLAIMER:** This is an early alpha/0.1 version. Many features are untested, and things might break or crash. I ported the core unit to Delphi and stripped FPC directives so we can start experimenting with 3D and physics directly in VCL.
+⚠️ **DISCLAIMER:** This is an early alpha/0.1 version. Many features are untested, and things might break or crash. I ported the core unit to Delphi and stripped FPC directives so we can start experimenting with 3D and physics directly in VCL. So far dont saw any problems in joltphysics4delphi project with it.     
 
 ## 🛠️ Current State
 - The core R3D and Kraft units compile in Delphi (Win64).
